@@ -1,0 +1,152 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Carlos Suarez"
+date: "Octuber 19,2015"
+output: html_document
+---
+
+##Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+##Data
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. The information has been generously provided for use use in this cousera course by the authors, Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. They have allowed the use of their paper “Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human ’13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+Both were downloaded for use in this assignment on September 3, 2015 at 6:50am GMT + 8hours.
+
+##Choosing the prediction algorithm
+
+Steps Taken
+
+1.Tidy data. Remove columns with little/no data.
+
+2.Create Training and test data from traing data for cross validation checking
+
+3.Trial 3 methods Random Forrest, Gradient boosted model and Linear discriminant analysis
+
+Fine tune model through combinations of above methods, reduction of input variables or similar. The fine tuning will take into account accuracy first and speed of analysis second.
+
+##Getting the Data
+```{r}
+setwd("~/Desktop/Projects/Coursera/Practical Machine Learning/Project")
+if(!file.exists("./Data")){dir.create("./Data")}
+#Training data:
+fileURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+if(!file.exists("./Data/pml-training.csv")){
+        download.file(fileURL, destfile = "./Data/pml-training.csv", method = "curl")
+}
+#Test data
+fileURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+if(!file.exists("./Data/pml-training.csv")){
+        download.file(fileURL, destfile = "./Data/pml-testing.csv", method = "curl")
+}
+#Reading the data
+#Remove “#DIV/0!”, replace with an NA value.
+pmlTraining <- read.csv("./Data/pml-training.csv",na.strings=c("NA","","#DIV/0!"),header=T)
+pmlTesting <- read.csv("./Data/pml-testing.csv",na.strings=c("NA","","#DIV/0!"),header=T)
+# Number of Variables and Number of Observations
+dim(pmlTraining)
+tail(names(pmlTraining))
+dim(pmlTesting)
+tail(names(pmlTesting))
+## Unmatched column names pmlTraining$classe and pmlTesting$problem_id
+#Checking Predictor Variable
+table(pmlTraining$classe)
+```
+###Loading required packages
+```{r}
+suppressMessages(library(caret))
+suppressMessages(library(randomForest))
+suppressMessages(library(rpart))
+suppressMessages(library(MASS))
+suppressMessages(library(gbm))
+suppressMessages(library(survival))
+suppressMessages(library(splines))
+set.seed(871)# setting the seed
+```
+
+##Preprocessing the Data
+```{r}
+# The Variables X,user_name,raw_timestamp_part_1,raw_timestamp_part_2,cvtd_timestamp,new_window,num_window are irrelevant for our analisys.
+pmlTraining <- pmlTraining[,-c(1:7)]
+pmlTesting <- pmlTesting[,-c(1:7)]
+#Remove Columns which contains more than 90% NAs
+pmlTraining <- pmlTraining[,colSums(is.na(pmlTraining)) < (nrow(pmlTraining)*0.90)]
+#Remove Columns which contains more than 90% Empty Cells
+pmlTraining <- pmlTraining[,colSums(pmlTraining=="") < (nrow(pmlTraining)*0.90)]
+#New Number of Variables
+dim(pmlTraining)
+#Remove candidate predictors that have near zero variance
+nzv <- nearZeroVar(pmlTraining)
+if(length(nzv) > 0) pmlTraining <- pmlTraining[, -nzv]
+dim(pmlTraining)
+#List of candidate predictors
+head(names(pmlTraining))
+#class as a factor
+pmlTraining$classe <- factor(pmlTraining$classe)
+```
+
+# Data Splitting
+Split the data: 70% for training, 30% for testing
+```{r}
+trainIndex <- createDataPartition(y=pmlTraining$classe, p=0.7, list=FALSE)
+trainingPartition <- pmlTraining[trainIndex, ] 
+testingPartition <- pmlTraining[-trainIndex, ]
+```
+###Training Algorithms
+Apply to 3 different learning methods, Classification Tree, Gradient Boosting (GBM) and Random Forest.
+
+```{r}
+#Three models are generated:  Random Forest, Boosted Trees (GBM) and Linear Discriminant Analysis (LDA)
+#Random Forest Model
+modelRF <- randomForest(classe ~., data = trainingPartition)
+predictionRF <- predict(modelRF, testingPartition)
+confusionMatrix(predictionRF,testingPartition$classe)
+#Boosted Trees (GBM)
+modelGBM <- train(classe ~ ., data = trainingPartition, method="gbm",verbose=F)
+predictionGBM <- predict(modelGBM, testingPartition)
+confusionMatrix(predictionGBM,testingPartition$classe)
+summary(predictionGBM)
+#Linear Discriminant Analysis (LDA)
+modelLDA <- train(classe ~ ., data = trainingPartition, method="lda")
+predictionLDA <- predict(modelLDA, testingPartition)
+confusionMatrix(predictionLDA,testingPartition$classe)
+```
+General Statistics
+       Random Forest Accuracy : 0.9956 (99.56%) (out of sample error < 1%)
+       Boosted Trees (GBM): 0.9672 (96.72%)
+       Linear Discriminant Analysis (LDA): 0.7035 (70.35%)
+       
+Based on results and comparing the models chosen for prediction, the Random Forests prediction performs better than GBM or LDA models. 
+
+The Random Forest model will be used as the prediction model(final calculations).
+
+###Prediction Assignment Submission
+
+```{r}
+#Predict outcome levels on the original Testing data set using Random Forest algorithm
+answers <- predict(modelRF, pmlTesting, type="class")
+answers
+```
+```{r}
+# Write files for submission
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(answers)
+```
+
+
+
+
